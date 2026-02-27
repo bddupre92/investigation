@@ -99,7 +99,7 @@ export default async function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {investigations.map((inv) => (
+                {investigations.map((inv: (typeof investigations)[number]) => (
                   <TableRow key={inv.id}>
                     <TableCell className="font-mono text-xs text-slate-600">
                       {inv.referenceNumber}
