@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  INVESTIGATOR
+  REVIEWER
+  VIEWER
+}
+
+enum InvestigationStatus {
+  DRAFT
+  IN_PROGRESS
+  PENDING_REVIEW
+  CLOSED
+  REOPENED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ProblemCategory {
+  HUMAN
+  PROCESS
+  EQUIPMENT
+  MATERIAL
+  MEASUREMENT
+}
+
+enum CAPAType {
+  CORRECTION
+  CORRECTIVE_ACTION
+  PREVENTIVE_ACTION
+}
+
+enum CAPAPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum CAPAStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum EffectivenessResult {
+  EFFECTIVE
+  NOT_EFFECTIVE
+  PENDING
+}
+
+enum DetectionMethod {
+  DEVIATION
+  OOS
+  ALARM
+  AUDIT
+  COMPLAINT
+  OTHER
+}
+
+// ─── Core Models ─────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole @default(INVESTIGATOR)
+  department   String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  investigations         Investigation[] @relation("InvestigationOwner")
+  reviewedInvestigations Investigation[] @relation("InvestigationReviewer")
+  capaActions            CAPAAction[]    @relation("CAPAOwner")
+  sessions               Session[]
+
+  @@map("users")
+}
+
+model Investigation {
+  id              String              @id @default(cuid())
+  referenceNumber String              @unique
+  title           String
+  status          InvestigationStatus @default(DRAFT)
+  currentStep     Int                 @default(1)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  closedAt        DateTime?
+
+  createdById String
+  createdBy   User   @relation("InvestigationOwner", fields: [createdById], references: [id])
+  reviewerId  String?
+  reviewer    User?  @relation("InvestigationReviewer", fields: [reviewerId], references: [id])
+
+  problemDefinition   ProblemDefinition?
+  riskAssessment      RiskAssessment?
+  problemCategory     ProblemCategoryRecord?
+  fiveWhys            FiveWhysRecord[]
+  rootCause           RootCauseRecord?
+  capaActions         CAPAAction[]
+  effectivenessRecord EffectivenessRecord?
+
+  @@index([status])
+  @@index([createdById])
+  @@map("investigations")
+}
+
+// ─── Step 2: Problem Definition ──────────────────────────────────────────────
+
+model ProblemDefinition {
+  id              String        @id @default(cuid())
+  investigationId String        @unique
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  description         String   @db.Text
+  department          String
+  occurredAt          DateTime
+  detectionMethod     DetectionMethod
+  detectionDetail     String?  @db.Text
+  containmentActions  String   @db.Text
+  productAffected     Boolean  @default(false)
+  productDetails      String?  @db.Text
+  completedAt         DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("problem_definitions")
+}
+
+// ─── Step 3: Risk Assessment ─────────────────────────────────────────────────
+
+model RiskAssessment {
+  id              String        @id @default(cuid())
+  investigationId String        @unique
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  q1Score Int
+  q2Score Int
+  q3Score Int
+  q4Score Int
+  q5Score Int
+
+  totalScore Int
+  riskLevel  RiskLevel
+
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("risk_assessments")
+}
+
+// ─── Step 4: Problem Category ────────────────────────────────────────────────
+
+model ProblemCategoryRecord {
+  id              String          @id @default(cuid())
+  investigationId String          @unique
+  investigation   Investigation   @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  category      ProblemCategory
+  justification String          @db.Text
+
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("problem_category_records")
+}
+
+// ─── Step 5: 5 Whys ──────────────────────────────────────────────────────────
+
+model FiveWhysRecord {
+  id              String        @id @default(cuid())
+  investigationId String
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  whyNumber    Int
+  whyQuestion  String @db.Text
+  answer       String @db.Text
+  evidence     String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([investigationId, whyNumber])
+  @@index([investigationId])
+  @@map("five_whys_records")
+}
+
+// ─── Step 6: Root Cause ──────────────────────────────────────────────────────
+
+model RootCauseRecord {
+  id              String        @id @default(cuid())
+  investigationId String        @unique
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  rootCauseStatement String  @db.Text
+  validationQ1       Boolean
+  validationQ2       Boolean
+  validationQ3       Boolean
+  hasWarnings        Boolean @default(false)
+  warningAcknowledged Boolean @default(false)
+
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("root_cause_records")
+}
+
+// ─── Step 7: CAPA Actions ────────────────────────────────────────────────────
+
+model CAPAAction {
+  id              String        @id @default(cuid())
+  investigationId String
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  type          CAPAType
+  description   String      @db.Text
+  ownerId       String
+  owner         User        @relation("CAPAOwner", fields: [ownerId], references: [id])
+  dueDate       DateTime
+  priority      CAPAPriority
+  successMetric String       @db.Text
+  status        CAPAStatus   @default(OPEN)
+  completedAt   DateTime?
+  completionNotes String?    @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([investigationId])
+  @@index([ownerId])
+  @@map("capa_actions")
+}
+
+// ─── Step 8: Effectiveness Verification ──────────────────────────────────────
+
+model EffectivenessRecord {
+  id              String        @id @default(cuid())
+  investigationId String        @unique
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  monitoringPeriodDays  Int
+  verificationMethod    String              @db.Text
+  successCriteria       String              @db.Text
+  result                EffectivenessResult @default(PENDING)
+  resultDetail          String?             @db.Text
+  reviewerApproved      Boolean             @default(false)
+  reviewerName          String?
+  reviewerNotes         String?             @db.Text
+  reviewedAt            DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("effectiveness_records")
+}
+
+// ─── Auth Session ────────────────────────────────────────────────────────────
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
