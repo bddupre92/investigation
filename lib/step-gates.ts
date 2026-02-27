@@ -65,9 +65,10 @@ export async function isStepComplete(
     case 4:
       return { allowed: !!inv.problemCategory }
     case 5: {
-      const allFive = inv.fiveWhys.length === 5
+      if (inv.fiveWhys.length === 0) return { allowed: false, reason: "At least one Why analysis is required." }
+      const hasRoot = inv.fiveWhys.some((w) => w.parentId === null)
       const allEvidence = inv.fiveWhys.every((w) => w.evidence.trim() !== "")
-      return { allowed: allFive && allEvidence }
+      return { allowed: hasRoot && allEvidence }
     }
     case 6: {
       const rc = inv.rootCause
@@ -81,13 +82,10 @@ export async function isStepComplete(
       return { allowed: true }
     }
     case 7: {
-      const hasCorrection = inv.capaActions.some((c) => c.type === "CORRECTION")
-      const hasCA = inv.capaActions.some((c) => c.type === "CORRECTIVE_ACTION")
-      const hasPA = inv.capaActions.some((c) => c.type === "PREVENTIVE_ACTION")
-      if (!hasCorrection || !hasCA || !hasPA) {
+      if (inv.capaActions.length < 1) {
         return {
           allowed: false,
-          reason: "At least one action of each type (Correction, Corrective Action, Preventive Action) is required.",
+          reason: "At least one CAPA action is required before continuing.",
         }
       }
       return { allowed: true }

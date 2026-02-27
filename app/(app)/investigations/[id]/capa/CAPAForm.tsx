@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { StepShell } from "@/components/investigation/StepShell"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -81,12 +82,14 @@ function ActionCard({
 }) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const router = useRouter()
 
   function handleEdit(formData: FormData) {
     formData.append("type", action.type)
     startTransition(async () => {
       await updateCAPAAction(action.id, id, formData)
       setOpen(false)
+      router.refresh()
     })
   }
 
@@ -315,12 +318,14 @@ function AddActionDialog({
 }) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const router = useRouter()
 
   function handleCreate(formData: FormData) {
     formData.append("type", type)
     startTransition(async () => {
       await createCAPAAction(id, formData)
       setOpen(false)
+      router.refresh()
     })
   }
 

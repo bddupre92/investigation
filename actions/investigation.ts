@@ -169,8 +169,11 @@ export async function saveProblemCategory(
 
 export async function saveFiveWhys(
   investigationId: string,
-  whys: Array<{
-    whyNumber: number
+  nodes: Array<{
+    id: string
+    parentId: string | null
+    treeIndex: number
+    depth: number
     whyQuestion: string
     answer: string
     evidence: string
@@ -178,19 +181,32 @@ export async function saveFiveWhys(
 ) {
   await getSession()
 
-  // Upsert all 5 whys
-  for (const why of whys) {
-    await prisma.fiveWhysRecord.upsert({
-      where: {
-        investigationId_whyNumber: {
+  if (nodes.length === 0) return { error: "At least one Why is required" }
+
+  await prisma.$transaction(async (tx) => {
+    // Delete all existing and recreate
+    await tx.fiveWhysRecord.deleteMany({ where: { investigationId } })
+
+    // Sort by depth to ensure parents are created before children
+    const sorted = [...nodes].sort((a, b) => a.depth - b.depth)
+    const idMap = new Map<string, string>()
+
+    for (const node of sorted) {
+      const resolvedParentId = node.parentId ? idMap.get(node.parentId) ?? null : null
+      const created = await tx.fiveWhysRecord.create({
+        data: {
           investigationId,
-          whyNumber: why.whyNumber,
+          treeIndex: node.treeIndex,
+          depth: node.depth,
+          parentId: resolvedParentId,
+          whyQuestion: node.whyQuestion,
+          answer: node.answer,
+          evidence: node.evidence,
         },
-      },
-      create: { investigationId, ...why },
-      update: { ...why },
-    })
-  }
+      })
+      idMap.set(node.id, created.id)
+    }
+  })
 
   await advanceStep(investigationId, 6)
   revalidatePath(`/investigations/${investigationId}`)

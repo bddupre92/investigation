@@ -13,20 +13,18 @@ export default async function FiveWhysPage({ params }: FiveWhysPageProps) {
     where: { id },
     include: {
       fiveWhys: {
-        orderBy: { whyNumber: "asc" },
+        orderBy: [{ treeIndex: "asc" }, { depth: "asc" }, { createdAt: "asc" }],
       },
     },
   })
 
   if (!investigation) notFound()
 
-  const existing = investigation.fiveWhys.map((w: {
-    whyNumber: number
-    whyQuestion: string
-    answer: string
-    evidence: string
-  }) => ({
-    whyNumber: w.whyNumber,
+  const existing = investigation.fiveWhys.map((w) => ({
+    id: w.id,
+    parentId: w.parentId,
+    treeIndex: w.treeIndex,
+    depth: w.depth,
     whyQuestion: w.whyQuestion,
     answer: w.answer,
     evidence: w.evidence,

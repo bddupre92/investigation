@@ -35,6 +35,7 @@ enum ProblemCategory {
   EQUIPMENT
   MATERIAL
   MEASUREMENT
+  ENVIRONMENT
 }
 
 enum CAPAType {
@@ -188,7 +189,12 @@ model FiveWhysRecord {
   investigationId String
   investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
 
-  whyNumber    Int
+  treeIndex    Int       @default(0)
+  depth        Int
+  parentId     String?
+  parent       FiveWhysRecord?  @relation("WhyTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children     FiveWhysRecord[] @relation("WhyTree")
+
   whyQuestion  String @db.Text
   answer       String @db.Text
   evidence     String @db.Text
@@ -196,8 +202,8 @@ model FiveWhysRecord {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([investigationId, whyNumber])
   @@index([investigationId])
+  @@index([parentId])
   @@map("five_whys_records")
 }
 

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { Separator } from "@/components/ui/separator"
+import { PrintButton } from "@/components/ui/client-buttons"
 import { closeInvestigation } from "@/actions/investigation"
 
 interface SummaryPageProps {
@@ -75,7 +76,7 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
       problemDefinition: true,
       riskAssessment: true,
       problemCategory: true,
-      fiveWhys: { orderBy: { whyNumber: "asc" } },
+      fiveWhys: { orderBy: [{ treeIndex: "asc" }, { depth: "asc" }, { createdAt: "asc" }] },
       rootCause: true,
       capaActions: {
         include: { owner: true },
@@ -153,16 +154,7 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
         </div>
 
         <div className="flex items-center gap-2 print:hidden flex-shrink-0">
-          {/* Print button — client interaction needed, use a plain button with onClick via a small inline script */}
-          <button
-            type="button"
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-ignore - onClick on server component button works in Next.js with client boundary or script
-            onClick="window.print()"
-            className="print:hidden inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors cursor-pointer"
-          >
-            Print / Download PDF
-          </button>
+          <PrintButton />
 
           {canClose && (
             <form action={handleClose}>
@@ -272,33 +264,49 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
         <section className="print:break-before-page">
           <SectionHeader number={4} title="Five Whys Analysis" />
           {fiveWhys.length > 0 ? (
-            <div className="space-y-3">
-              {fiveWhys.map((w: {
-                id: string
-                whyNumber: number
-                whyQuestion: string
-                answer: string
-                evidence: string
-              }) => (
-                <div
-                  key={w.whyNumber}
-                  className="rounded-lg border border-slate-200 bg-white p-4"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold">
-                      {w.whyNumber}
-                    </span>
-                    <span className="text-sm font-medium text-slate-800">
-                      Why {w.whyNumber}
-                    </span>
-                  </div>
-                  <dl>
-                    <Field label="Question" value={w.whyQuestion || "\u2014"} />
-                    <Field label="Answer" value={w.answer || "\u2014"} />
-                    <Field label="Evidence" value={w.evidence || "\u2014"} />
-                  </dl>
-                </div>
-              ))}
+            <div className="space-y-6">
+              {Array.from(new Set(fiveWhys.map((w: { treeIndex: number }) => w.treeIndex)))
+                .sort((a, b) => a - b)
+                .map((treeIdx, treeArrayIdx) => {
+                  const treeNodes = fiveWhys.filter((w: { treeIndex: number }) => w.treeIndex === treeIdx)
+                  return (
+                    <div key={treeIdx} className="space-y-3">
+                      {treeArrayIdx > 0 && (
+                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide pt-2 border-t border-slate-200">
+                          Root Cause Tree {treeArrayIdx + 1}
+                        </p>
+                      )}
+                      {treeNodes.map((w: {
+                        id: string
+                        treeIndex: number
+                        depth: number
+                        whyQuestion: string
+                        answer: string
+                        evidence: string
+                      }) => (
+                        <div
+                          key={w.id}
+                          className="rounded-lg border border-slate-200 bg-white p-4"
+                          style={{ marginLeft: `${(w.depth - 1) * 1.5}rem` }}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold">
+                              {w.depth}
+                            </span>
+                            <span className="text-sm font-medium text-slate-800">
+                              Why {w.depth}
+                            </span>
+                          </div>
+                          <dl>
+                            <Field label="Question" value={w.whyQuestion || "\u2014"} />
+                            <Field label="Answer" value={w.answer || "\u2014"} />
+                            <Field label="Evidence" value={w.evidence || "\u2014"} />
+                          </dl>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })}
             </div>
           ) : (
             <p className="text-sm text-slate-400 italic">Not completed.</p>
