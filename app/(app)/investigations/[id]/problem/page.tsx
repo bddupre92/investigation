@@ -6,13 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 interface Props {
   params: Promise<{ id: string }>
@@ -42,7 +35,11 @@ export default async function ProblemDefinitionPage({ params }: Props) {
   if (!investigation) notFound()
 
   const existing = investigation.problemDefinition
-  const action = saveProblemDefinition.bind(null, id)
+
+  async function handleSubmit(formData: FormData) {
+    "use server"
+    await saveProblemDefinition(id, formData)
+  }
 
   return (
     <StepShell
@@ -51,7 +48,7 @@ export default async function ProblemDefinitionPage({ params }: Props) {
       description="Define what happened, where, when, and what immediate actions were taken."
       investigationId={id}
     >
-      <form action={action} className="space-y-6">
+      <form action={handleSubmit} className="space-y-6">
         {/* What happened */}
         <div className="space-y-2">
           <Label htmlFor="description">What Happened? *</Label>

@@ -6,6 +6,11 @@ import { createInvestigation } from "@/actions/investigation"
 import Link from "next/link"
 
 export default function NewInvestigationPage() {
+  async function handleCreate(formData: FormData) {
+    "use server"
+    await createInvestigation(formData)
+  }
+
   return (
     <div className="p-8 max-w-2xl">
       <div className="mb-6">
@@ -22,7 +27,7 @@ export default function NewInvestigationPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={createInvestigation} className="space-y-5">
+          <form action={handleCreate} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="title">Investigation Title *</Label>
               <Input
