@@ -7,13 +7,19 @@ import { CheckIcon } from "lucide-react"
 const STEPS = [
   { number: 2, label: "Problem Definition", path: "problem" },
   { number: 3, label: "Risk Assessment", path: "risk" },
-  { number: 4, label: "Problem Category", path: "category" },
-  { number: 5, label: "Five Whys", path: "five-whys" },
-  { number: 6, label: "Root Cause", path: "root-cause" },
-  { number: 7, label: "CAPA Plan", path: "capa" },
-  { number: 8, label: "Effectiveness", path: "effectiveness" },
-  { number: 9, label: "Summary", path: "summary" },
+  { number: 4, label: "Tool Decision", path: "tool-decision" },
+  { number: 5, label: "Problem Category", path: "category" },
+  { number: 6, label: "Five Whys", path: "five-whys" },
+  { number: 7, label: "Fishbone / Ishikawa", path: "fishbone" },
+  { number: 8, label: "Is / Is Not", path: "is-is-not" },
+  { number: 9, label: "Process Analysis", path: "process-analysis" },
+  { number: 10, label: "Root Cause", path: "root-cause" },
+  { number: 11, label: "CAPA Plan", path: "capa" },
+  { number: 12, label: "Effectiveness", path: "effectiveness" },
+  { number: 13, label: "Summary", path: "summary" },
 ]
+
+const ANALYSIS_TOOL_STEPS = [7, 8, 9]
 
 interface InvestigationStepperProps {
   investigationId: string
@@ -45,7 +51,10 @@ export function InvestigationStepper({
           {STEPS.map((step, idx) => {
             const isCompleted = currentStep > step.number
             const isCurrent = currentStep === step.number
-            const isLocked = currentStep < step.number
+            const isAnalysisTool = ANALYSIS_TOOL_STEPS.includes(step.number)
+            const isLocked = isAnalysisTool
+              ? currentStep < 6
+              : currentStep < step.number
 
             return (
               <li key={step.number}>

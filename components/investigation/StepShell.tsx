@@ -27,7 +27,7 @@ export function StepShell({
             {stepNumber}
           </span>
           <span className="text-xs text-slate-400 uppercase tracking-wide font-medium">
-            Step {stepNumber} of 9
+            Step {stepNumber} of 12
           </span>
         </div>
         <h1 className="text-xl font-semibold text-slate-900">{title}</h1>

@@ -370,7 +370,7 @@ export function CAPAForm({ id, capaActions, users }: CAPAFormProps) {
 
   return (
     <StepShell
-      stepNumber={6}
+      stepNumber={10}
       title="CAPA Plan"
       description="Define corrective and preventive actions to address the root cause."
       investigationId={id}

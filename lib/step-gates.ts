@@ -6,18 +6,24 @@ const STEP_PATHS: Record<number, string> = {
   1: "problem",
   2: "problem",
   3: "risk",
-  4: "category",
-  5: "five-whys",
-  6: "root-cause",
-  7: "capa",
-  8: "effectiveness",
-  9: "summary",
-  10: "close",
+  4: "tool-decision",
+  5: "category",
+  6: "five-whys",
+  7: "fishbone",
+  8: "is-is-not",
+  9: "process-analysis",
+  10: "root-cause",
+  11: "capa",
+  12: "effectiveness",
+  13: "summary",
+  14: "close",
 }
 
 export function stepPath(step: number): string {
   return STEP_PATHS[step] ?? "problem"
 }
+
+const ANALYSIS_TOOL_STEPS = [7, 8, 9]
 
 export async function canAccessStep(
   investigationId: string,
@@ -31,6 +37,12 @@ export async function canAccessStep(
   if (!inv) return { allowed: false, reason: "Investigation not found" }
   if (targetStep <= inv.currentStep) return { allowed: true }
   if (targetStep === inv.currentStep + 1) return { allowed: true }
+
+  // Analysis tool steps (7=fishbone, 8=is-is-not, 9=process-analysis)
+  // are accessible once the user has reached step 6 (Five Whys)
+  if (ANALYSIS_TOOL_STEPS.includes(targetStep) && inv.currentStep >= 6) {
+    return { allowed: true }
+  }
 
   return {
     allowed: false,
@@ -47,6 +59,7 @@ export async function isStepComplete(
     include: {
       problemDefinition: true,
       riskAssessment: true,
+      toolDecision: true,
       problemCategory: true,
       fiveWhys: true,
       rootCause: true,
@@ -63,14 +76,21 @@ export async function isStepComplete(
     case 3:
       return { allowed: !!inv.riskAssessment }
     case 4:
+      return { allowed: !!inv.toolDecision }
+    case 5:
       return { allowed: !!inv.problemCategory }
-    case 5: {
+    case 6: {
       if (inv.fiveWhys.length === 0) return { allowed: false, reason: "At least one Why analysis is required." }
       const hasRoot = inv.fiveWhys.some((w) => w.parentId === null)
       const allEvidence = inv.fiveWhys.every((w) => w.evidence.trim() !== "")
       return { allowed: hasRoot && allEvidence }
     }
-    case 6: {
+    case 7:
+    case 8:
+    case 9:
+      // Optional analysis tools — always considered complete
+      return { allowed: true }
+    case 10: {
       const rc = inv.rootCause
       if (!rc) return { allowed: false }
       if (rc.hasWarnings && !rc.warningAcknowledged) {
@@ -81,7 +101,7 @@ export async function isStepComplete(
       }
       return { allowed: true }
     }
-    case 7: {
+    case 11: {
       if (inv.capaActions.length < 1) {
         return {
           allowed: false,
@@ -90,15 +110,15 @@ export async function isStepComplete(
       }
       return { allowed: true }
     }
-    case 8: {
+    case 12: {
       const er = inv.effectivenessRecord
       if (!er) return { allowed: false }
       if (er.result === "PENDING") return { allowed: false, reason: "Effectiveness result must be recorded." }
       if (!er.reviewerApproved) return { allowed: false, reason: "Reviewer approval is required." }
       return { allowed: true }
     }
-    case 9:
-      return { allowed: inv.currentStep >= 8 }
+    case 13:
+      return { allowed: inv.currentStep >= 12 }
     default:
       return { allowed: true }
   }

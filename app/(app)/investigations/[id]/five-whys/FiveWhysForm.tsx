@@ -207,7 +207,7 @@ export function FiveWhysForm({ id, existing }: FiveWhysFormProps) {
 
   return (
     <StepShell
-      stepNumber={4}
+      stepNumber={5}
       title="Five Whys Analysis"
       description="Ask 'Why?' repeatedly to drill down to the root cause. Add branches when causes diverge, or separate trees for multiple root causes."
       investigationId={id}

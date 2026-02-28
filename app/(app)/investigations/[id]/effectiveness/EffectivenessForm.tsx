@@ -119,7 +119,7 @@ export function EffectivenessForm({
 
   return (
     <StepShell
-      stepNumber={7}
+      stepNumber={11}
       title="Effectiveness Verification"
       description="Define how effectiveness will be monitored and record the outcome."
       investigationId={id}

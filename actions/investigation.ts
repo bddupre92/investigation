@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache"
 import { createInvestigationSchema } from "@/schemas/investigation"
 import { problemDefinitionSchema } from "@/schemas/problem"
 import { riskAssessmentSchema } from "@/schemas/risk"
+import { toolDecisionSchema } from "@/schemas/tool-decision"
 import { problemCategorySchema } from "@/schemas/category"
 import { rootCauseSchema } from "@/schemas/root-cause"
 import { capaActionSchema } from "@/schemas/capa"
@@ -16,6 +17,7 @@ import {
 } from "@/schemas/effectiveness"
 import { calculateRiskLevel } from "@/lib/risk-calculator"
 import { isStepComplete, canCloseInvestigation } from "@/lib/step-gates"
+import { logAudit, AUDIT_ACTIONS } from "@/lib/audit"
 
 async function getSession() {
   const session = await auth()
@@ -53,6 +55,15 @@ export async function createInvestigation(formData: FormData) {
     },
   })
 
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.INVESTIGATION_CREATE,
+    entityType: "investigation",
+    entityId: investigation.id,
+    metadata: { title: parsed.data.title, referenceNumber },
+  })
+
   redirect(`/investigations/${investigation.id}/problem`)
 }
 
@@ -62,7 +73,7 @@ export async function saveProblemDefinition(
   investigationId: string,
   formData: FormData
 ) {
-  await getSession()
+  const session = await getSession()
 
   const raw = {
     description: formData.get("description"),
@@ -96,6 +107,15 @@ export async function saveProblemDefinition(
     data: { currentStep: Math.max(3, await getCurrentStep(investigationId)) },
   })
 
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "problem_definition" },
+  })
+
   revalidatePath(`/investigations/${investigationId}`)
   redirect(`/investigations/${investigationId}/risk`)
 }
@@ -106,7 +126,7 @@ export async function saveRiskAssessment(
   investigationId: string,
   formData: FormData
 ) {
-  await getSession()
+  const session = await getSession()
 
   const raw = {
     q1Score: Number(formData.get("q1Score")),
@@ -134,17 +154,74 @@ export async function saveRiskAssessment(
   })
 
   await advanceStep(investigationId, 4)
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "risk_assessment", riskLevel, totalScore },
+  })
+
+  revalidatePath(`/investigations/${investigationId}`)
+  redirect(`/investigations/${investigationId}/tool-decision`)
+}
+
+// ─── Step 4: Tool Decision ──────────────────────────────────────────────────
+
+export async function saveToolDecision(
+  investigationId: string,
+  data: {
+    fiveWhys: boolean
+    fishbone: boolean
+    isIsNot: boolean
+    processAnalysis: boolean
+    notes?: string
+    who?: string
+    why?: string
+    howMuch?: string
+    whereDetail?: string
+    howDetail?: string
+    causeType?: "COMMON" | "SPECIAL" | "UNKNOWN"
+    isRecurring?: boolean
+    suspectedCauses?: "SINGLE" | "MULTIPLE"
+    processChangeInvolved?: boolean
+    processChangeDetail?: string
+    aiRecommendation?: string
+  }
+) {
+  const session = await getSession()
+
+  const parsed = toolDecisionSchema.safeParse(data)
+  if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
+
+  await prisma.toolDecision.upsert({
+    where: { investigationId },
+    create: { investigationId, ...parsed.data },
+    update: { ...parsed.data },
+  })
+
+  await advanceStep(investigationId, 5)
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "tool_decision", tools: { fiveWhys: data.fiveWhys, fishbone: data.fishbone, isIsNot: data.isIsNot, processAnalysis: data.processAnalysis } },
+  })
+
   revalidatePath(`/investigations/${investigationId}`)
   redirect(`/investigations/${investigationId}/category`)
 }
 
-// ─── Step 4: Problem Category ─────────────────────────────────────────────────
+// ─── Step 5: Problem Category ────────────────────────────────────────────────
 
 export async function saveProblemCategory(
   investigationId: string,
   formData: FormData
 ) {
-  await getSession()
+  const session = await getSession()
 
   const raw = {
     category: formData.get("category"),
@@ -160,12 +237,21 @@ export async function saveProblemCategory(
     update: { ...parsed.data },
   })
 
-  await advanceStep(investigationId, 5)
+  await advanceStep(investigationId, 6)
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "problem_category" },
+  })
+
   revalidatePath(`/investigations/${investigationId}`)
   redirect(`/investigations/${investigationId}/five-whys`)
 }
 
-// ─── Step 5: Five Whys ────────────────────────────────────────────────────────
+// ─── Step 6: Five Whys ──────────────────────────────────────────────────────
 
 export async function saveFiveWhys(
   investigationId: string,
@@ -179,7 +265,7 @@ export async function saveFiveWhys(
     evidence: string
   }>
 ) {
-  await getSession()
+  const session = await getSession()
 
   if (nodes.length === 0) return { error: "At least one Why is required" }
 
@@ -208,12 +294,149 @@ export async function saveFiveWhys(
     }
   })
 
-  await advanceStep(investigationId, 6)
+  await advanceStep(investigationId, 10)
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "five_whys", nodeCount: nodes.length },
+  })
+
   revalidatePath(`/investigations/${investigationId}`)
   redirect(`/investigations/${investigationId}/root-cause`)
 }
 
-// ─── Step 6: Root Cause ───────────────────────────────────────────────────────
+// ─── Step 7: Fishbone / Ishikawa ────────────────────────────────────────────
+
+export async function saveFishbone(
+  investigationId: string,
+  causes: Array<{
+    category: string
+    cause: string
+    evidence?: string
+  }>
+) {
+  const session = await getSession()
+
+  if (causes.length === 0) return { error: "At least one cause is required" }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.fishboneCause.deleteMany({ where: { investigationId } })
+    for (const cause of causes) {
+      await tx.fishboneCause.create({
+        data: {
+          investigationId,
+          category: cause.category as "MAN" | "MACHINE" | "METHOD" | "MATERIAL" | "MEASUREMENT" | "ENVIRONMENT",
+          cause: cause.cause,
+          evidence: cause.evidence || null,
+        },
+      })
+    }
+  })
+
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "fishbone", causeCount: causes.length },
+  })
+
+  revalidatePath(`/investigations/${investigationId}/fishbone`)
+}
+
+// ─── Step 8: Is / Is Not ────────────────────────────────────────────────────
+
+export async function saveIsIsNot(
+  investigationId: string,
+  entries: Array<{
+    dimension: string
+    isDescription: string
+    isNotDescription: string
+    distinction?: string
+  }>
+) {
+  const session = await getSession()
+
+  if (entries.length === 0) return { error: "At least one entry is required" }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.isIsNotEntry.deleteMany({ where: { investigationId } })
+    for (const entry of entries) {
+      await tx.isIsNotEntry.create({
+        data: {
+          investigationId,
+          dimension: entry.dimension,
+          isDescription: entry.isDescription,
+          isNotDescription: entry.isNotDescription,
+          distinction: entry.distinction || null,
+        },
+      })
+    }
+  })
+
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "is_is_not", entryCount: entries.length },
+  })
+
+  revalidatePath(`/investigations/${investigationId}/is-is-not`)
+}
+
+// ─── Step 9: Process Analysis ───────────────────────────────────────────────
+
+export async function saveProcessAnalysis(
+  investigationId: string,
+  steps: Array<{
+    stepNumber: number
+    processStep: string
+    expected: string
+    actual: string
+    deviation: boolean
+    deviationDetail?: string
+  }>
+) {
+  const session = await getSession()
+
+  if (steps.length === 0) return { error: "At least one process step is required" }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.processAnalysisStep.deleteMany({ where: { investigationId } })
+    for (const step of steps) {
+      await tx.processAnalysisStep.create({
+        data: {
+          investigationId,
+          stepNumber: step.stepNumber,
+          processStep: step.processStep,
+          expected: step.expected,
+          actual: step.actual,
+          deviation: step.deviation,
+          deviationDetail: step.deviationDetail || null,
+        },
+      })
+    }
+  })
+
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "process_analysis", stepCount: steps.length },
+  })
+
+  revalidatePath(`/investigations/${investigationId}/process-analysis`)
+}
+
+// ─── Step 10: Root Cause ────────────────────────────────────────────────────
 
 export async function saveRootCause(
   investigationId: string,
@@ -225,7 +448,7 @@ export async function saveRootCause(
     warningAcknowledged: boolean
   }
 ) {
-  await getSession()
+  const session = await getSession()
 
   const parsed = rootCauseSchema.safeParse(data)
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
@@ -256,18 +479,27 @@ export async function saveRootCause(
     },
   })
 
-  await advanceStep(investigationId, 7)
+  await advanceStep(investigationId, 11)
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "root_cause", hasWarnings },
+  })
+
   revalidatePath(`/investigations/${investigationId}`)
   redirect(`/investigations/${investigationId}/capa`)
 }
 
-// ─── Step 7: CAPA Actions ─────────────────────────────────────────────────────
+// ─── Step 11: CAPA Actions ──────────────────────────────────────────────────
 
 export async function createCAPAAction(
   investigationId: string,
   formData: FormData
 ) {
-  await getSession()
+  const session = await getSession()
 
   const raw = {
     type: formData.get("type"),
@@ -290,6 +522,15 @@ export async function createCAPAAction(
     },
   })
 
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "capa_create", type: parsed.data.type },
+  })
+
   revalidatePath(`/investigations/${investigationId}/capa`)
 }
 
@@ -298,7 +539,7 @@ export async function updateCAPAAction(
   investigationId: string,
   formData: FormData
 ) {
-  await getSession()
+  const session = await getSession()
 
   const raw = {
     type: formData.get("type"),
@@ -324,6 +565,15 @@ export async function updateCAPAAction(
     },
   })
 
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "capa_update", actionId, status: parsed.data.status },
+  })
+
   revalidatePath(`/investigations/${investigationId}/capa`)
 }
 
@@ -331,27 +581,35 @@ export async function deleteCAPAAction(
   actionId: string,
   investigationId: string
 ) {
-  await getSession()
+  const session = await getSession()
   await prisma.cAPAAction.delete({ where: { id: actionId } })
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "capa_delete", actionId },
+  })
   revalidatePath(`/investigations/${investigationId}/capa`)
 }
 
 export async function advanceToCAPAStep(investigationId: string) {
-  const { allowed, reason } = await isStepComplete(investigationId, 7)
+  const { allowed, reason } = await isStepComplete(investigationId, 11)
   if (!allowed) return { error: reason }
 
-  await advanceStep(investigationId, 8)
+  await advanceStep(investigationId, 12)
   revalidatePath(`/investigations/${investigationId}`)
   redirect(`/investigations/${investigationId}/effectiveness`)
 }
 
-// ─── Step 8: Effectiveness Verification ──────────────────────────────────────
+// ─── Step 12: Effectiveness Verification ────────────────────────────────────
 
 export async function saveEffectivenessSetup(
   investigationId: string,
   formData: FormData
 ) {
-  await getSession()
+  const session = await getSession()
 
   const raw = {
     monitoringPeriodDays: Number(formData.get("monitoringPeriodDays")),
@@ -366,6 +624,15 @@ export async function saveEffectivenessSetup(
     where: { investigationId },
     create: { investigationId, ...parsed.data },
     update: { ...parsed.data },
+  })
+
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "effectiveness_setup" },
   })
 
   revalidatePath(`/investigations/${investigationId}/effectiveness`)
@@ -394,7 +661,7 @@ export async function saveEffectivenessResult(
     // Reopen CAPA section
     await prisma.investigation.update({
       where: { id: investigationId },
-      data: { status: "REOPENED", currentStep: 7 },
+      data: { status: "REOPENED", currentStep: 11 },
     })
 
     await prisma.effectivenessRecord.update({
@@ -404,6 +671,15 @@ export async function saveEffectivenessResult(
         reviewerApproved: true,
         reviewedAt: new Date(),
       },
+    })
+
+    logAudit({
+      userId: session.user.id,
+      userEmail: session.user.email,
+      action: AUDIT_ACTIONS.INVESTIGATION_REOPEN,
+      entityType: "investigation",
+      entityId: investigationId,
+      metadata: { reason: "effectiveness_not_met" },
     })
 
     revalidatePath(`/investigations/${investigationId}`)
@@ -421,14 +697,23 @@ export async function saveEffectivenessResult(
 
   await prisma.investigation.update({
     where: { id: investigationId },
-    data: { status: "PENDING_REVIEW", currentStep: 9 },
+    data: { status: "PENDING_REVIEW", currentStep: 13 },
+  })
+
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.STEP_SAVE,
+    entityType: "investigation",
+    entityId: investigationId,
+    metadata: { step: "effectiveness_result", result: parsed.data.result },
   })
 
   revalidatePath(`/investigations/${investigationId}`)
   redirect(`/investigations/${investigationId}/summary`)
 }
 
-// ─── Step 10: Close Investigation ─────────────────────────────────────────────
+// ─── Step 14: Close Investigation ───────────────────────────────────────────
 
 export async function closeInvestigation(investigationId: string) {
   const session = await getSession()
@@ -444,9 +729,17 @@ export async function closeInvestigation(investigationId: string) {
     data: {
       status: "CLOSED",
       closedAt: new Date(),
-      currentStep: 10,
+      currentStep: 14,
       reviewerId: session.user.id,
     },
+  })
+
+  logAudit({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    action: AUDIT_ACTIONS.INVESTIGATION_CLOSE,
+    entityType: "investigation",
+    entityId: investigationId,
   })
 
   revalidatePath("/dashboard")

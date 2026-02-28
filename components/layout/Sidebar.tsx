@@ -16,6 +16,8 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "Investigations", href: "/dashboard" },
   { label: "Users", href: "/admin/users", roles: ["ADMIN"] },
+  { label: "AI Usage", href: "/admin/ai-usage", roles: ["ADMIN"] },
+  { label: "Audit Log", href: "/admin/audit-log", roles: ["ADMIN"] },
 ]
 
 interface SidebarProps {

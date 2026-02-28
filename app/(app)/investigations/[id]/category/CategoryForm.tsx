@@ -81,7 +81,7 @@ export function CategoryForm({ id, existing }: CategoryFormProps) {
 
   return (
     <StepShell
-      stepNumber={3}
+      stepNumber={4}
       title="Problem Category"
       description="Classify the type of problem to guide your investigation approach."
       investigationId={id}

@@ -71,6 +71,26 @@ enum DetectionMethod {
   OTHER
 }
 
+enum FishboneCategory {
+  MAN
+  MACHINE
+  METHOD
+  MATERIAL
+  MEASUREMENT
+  ENVIRONMENT
+}
+
+enum CauseType {
+  COMMON
+  SPECIAL
+  UNKNOWN
+}
+
+enum SuspectedCauses {
+  SINGLE
+  MULTIPLE
+}
+
 // ─── Core Models ─────────────────────────────────────────────────────────────
 
 model User {
@@ -84,10 +104,23 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // AI usage limits
+  aiDailyLimit   Int @default(20)
+  aiMonthlyLimit Int @default(200)
+
+  // Account lockout
+  lockedUntil       DateTime?
+  failedLoginCount  Int       @default(0)
+  lastFailedLogin   DateTime?
+
+  // Password metadata
+  passwordChangedAt DateTime?
+
   investigations         Investigation[] @relation("InvestigationOwner")
   reviewedInvestigations Investigation[] @relation("InvestigationReviewer")
   capaActions            CAPAAction[]    @relation("CAPAOwner")
-  sessions               Session[]
+  activeSessions         ActiveSession[]
+  aiUsageRecords         AIUsageRecord[]
 
   @@map("users")
 }
@@ -107,16 +140,21 @@ model Investigation {
   reviewerId  String?
   reviewer    User?  @relation("InvestigationReviewer", fields: [reviewerId], references: [id])
 
-  problemDefinition   ProblemDefinition?
-  riskAssessment      RiskAssessment?
-  problemCategory     ProblemCategoryRecord?
-  fiveWhys            FiveWhysRecord[]
-  rootCause           RootCauseRecord?
-  capaActions         CAPAAction[]
-  effectivenessRecord EffectivenessRecord?
+  problemDefinition    ProblemDefinition?
+  riskAssessment       RiskAssessment?
+  toolDecision         ToolDecision?
+  problemCategory      ProblemCategoryRecord?
+  fiveWhys             FiveWhysRecord[]
+  fishboneCauses       FishboneCause[]
+  isIsNotEntries       IsIsNotEntry[]
+  processAnalysisSteps ProcessAnalysisStep[]
+  rootCause            RootCauseRecord?
+  capaActions          CAPAAction[]
+  effectivenessRecord  EffectivenessRecord?
 
   @@index([status])
   @@index([createdById])
+  @@index([createdAt])
   @@map("investigations")
 }
 
@@ -165,7 +203,44 @@ model RiskAssessment {
   @@map("risk_assessments")
 }
 
-// ─── Step 4: Problem Category ────────────────────────────────────────────────
+// ─── Step 4: Tool Decision ──────────────────────────────────────────────────
+
+model ToolDecision {
+  id              String        @id @default(cuid())
+  investigationId String        @unique
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  // Tool selection
+  fiveWhys        Boolean @default(true)
+  fishbone        Boolean @default(false)
+  isIsNot         Boolean @default(false)
+  processAnalysis Boolean @default(false)
+  notes           String? @db.Text
+
+  // 5W2H gap fields
+  who         String? @db.Text
+  why         String? @db.Text
+  howMuch     String? @db.Text
+  whereDetail String? @db.Text
+  howDetail   String? @db.Text
+
+  // Complexity assessment
+  causeType             CauseType?
+  isRecurring           Boolean?
+  suspectedCauses       SuspectedCauses?
+  processChangeInvolved Boolean?
+  processChangeDetail   String? @db.Text
+
+  // AI recommendation
+  aiRecommendation String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("tool_decisions")
+}
+
+// ─── Step 5: Problem Category ────────────────────────────────────────────────
 
 model ProblemCategoryRecord {
   id              String          @id @default(cuid())
@@ -182,7 +257,7 @@ model ProblemCategoryRecord {
   @@map("problem_category_records")
 }
 
-// ─── Step 5: 5 Whys ──────────────────────────────────────────────────────────
+// ─── Step 6: 5 Whys ──────────────────────────────────────────────────────────
 
 model FiveWhysRecord {
   id              String        @id @default(cuid())
@@ -207,7 +282,65 @@ model FiveWhysRecord {
   @@map("five_whys_records")
 }
 
-// ─── Step 6: Root Cause ──────────────────────────────────────────────────────
+// ─── Step 7: Fishbone / Ishikawa ────────────────────────────────────────────
+
+model FishboneCause {
+  id              String        @id @default(cuid())
+  investigationId String
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  category FishboneCategory
+  cause    String           @db.Text
+  evidence String?          @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([investigationId])
+  @@map("fishbone_causes")
+}
+
+// ─── Step 8: Is / Is Not Analysis ───────────────────────────────────────────
+
+model IsIsNotEntry {
+  id              String        @id @default(cuid())
+  investigationId String
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  dimension        String
+  isDescription    String @db.Text
+  isNotDescription String @db.Text
+  distinction      String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([investigationId])
+  @@map("is_is_not_entries")
+}
+
+// ─── Step 9: Process Analysis Table ─────────────────────────────────────────
+
+model ProcessAnalysisStep {
+  id              String        @id @default(cuid())
+  investigationId String
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  stepNumber      Int
+  processStep     String  @db.Text
+  expected        String  @db.Text
+  actual          String  @db.Text
+  deviation       Boolean @default(false)
+  deviationDetail String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([investigationId])
+  @@map("process_analysis_steps")
+}
+
+// ─── Step 10: Root Cause ─────────────────────────────────────────────────────────
 
 model RootCauseRecord {
   id              String        @id @default(cuid())
@@ -228,7 +361,7 @@ model RootCauseRecord {
   @@map("root_cause_records")
 }
 
-// ─── Step 7: CAPA Actions ────────────────────────────────────────────────────
+// ─── Step 11: CAPA Actions ───────────────────────────────────────────────────
 
 model CAPAAction {
   id              String        @id @default(cuid())
@@ -254,7 +387,7 @@ model CAPAAction {
   @@map("capa_actions")
 }
 
-// ─── Step 8: Effectiveness Verification ──────────────────────────────────────
+// ─── Step 12: Effectiveness Verification ─────────────────────────────────────
 
 model EffectivenessRecord {
   id              String        @id @default(cuid())
@@ -277,14 +410,73 @@ model EffectivenessRecord {
   @@map("effectiveness_records")
 }
 
-// ─── Auth Session ────────────────────────────────────────────────────────────
+// ─── Auth Security ──────────────────────────────────────────────────────────
 
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model ActiveSession {
+  id            String    @id @default(cuid())
+  jti           String    @unique
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent     String?   @db.Text
+  ipAddress     String?
+  lastActiveAt  DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
 
-  @@map("sessions")
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("active_sessions")
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ipAddress String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@map("login_attempts")
+}
+
+// ─── Audit Logging ──────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  userEmail  String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   String?  @db.Text
+  ipAddress  String?
+  userAgent  String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── AI Usage Tracking ──────────────────────────────────────────────────────
+
+model AIUsageRecord {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action        String
+  model         String
+  inputTokens   Int
+  outputTokens  Int
+  estimatedCost Float
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("ai_usage_records")
 }

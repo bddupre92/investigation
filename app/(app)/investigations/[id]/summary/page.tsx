@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { Separator } from "@/components/ui/separator"
-import { PrintButton } from "@/components/ui/client-buttons"
+import { PrintButton, ExportCsvButton } from "@/components/ui/client-buttons"
 import { closeInvestigation } from "@/actions/investigation"
 
 interface SummaryPageProps {
@@ -75,8 +75,12 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
     include: {
       problemDefinition: true,
       riskAssessment: true,
+      toolDecision: true,
       problemCategory: true,
       fiveWhys: { orderBy: [{ treeIndex: "asc" }, { depth: "asc" }, { createdAt: "asc" }] },
+      fishboneCauses: { orderBy: { category: "asc" } },
+      isIsNotEntries: true,
+      processAnalysisSteps: { orderBy: { stepNumber: "asc" } },
       rootCause: true,
       capaActions: {
         include: { owner: true },
@@ -92,8 +96,12 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
   const {
     problemDefinition: pd,
     riskAssessment: ra,
+    toolDecision: td,
     problemCategory: pc,
     fiveWhys,
+    fishboneCauses,
+    isIsNotEntries,
+    processAnalysisSteps,
     rootCause: rc,
     capaActions,
     effectivenessRecord: er,
@@ -154,6 +162,7 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
         </div>
 
         <div className="flex items-center gap-2 print:hidden flex-shrink-0">
+          <ExportCsvButton investigationId={id} />
           <PrintButton />
 
           {canClose && (
@@ -245,9 +254,27 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
 
         <Separator className="print:hidden" />
 
-        {/* Section 3: Problem Category */}
+        {/* Section 3: Tool Selection */}
         <section>
-          <SectionHeader number={3} title="Problem Category" />
+          <SectionHeader number={3} title="Tool Selection" />
+          {td ? (
+            <dl className="rounded-lg border border-slate-200 bg-white p-4">
+              <Field label="Five Whys" value={td.fiveWhys ? "Selected" : "Not Selected"} />
+              <Field label="Fishbone / Ishikawa" value={td.fishbone ? "Selected" : "Not Selected"} />
+              <Field label="Is / Is Not" value={td.isIsNot ? "Selected" : "Not Selected"} />
+              <Field label="Process Analysis" value={td.processAnalysis ? "Selected" : "Not Selected"} />
+              {td.notes && <Field label="Notes" value={td.notes} />}
+            </dl>
+          ) : (
+            <p className="text-sm text-slate-400 italic">Not completed.</p>
+          )}
+        </section>
+
+        <Separator className="print:hidden" />
+
+        {/* Section 4: Problem Category */}
+        <section>
+          <SectionHeader number={4} title="Problem Category" />
           {pc ? (
             <dl className="rounded-lg border border-slate-200 bg-white p-4">
               <Field label="Category" value={pc.category as string} />
@@ -260,9 +287,9 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
 
         <Separator className="print:hidden" />
 
-        {/* Section 4: Five Whys */}
+        {/* Section 5: Five Whys */}
         <section className="print:break-before-page">
-          <SectionHeader number={4} title="Five Whys Analysis" />
+          <SectionHeader number={5} title="Five Whys Analysis" />
           {fiveWhys.length > 0 ? (
             <div className="space-y-6">
               {Array.from(new Set(fiveWhys.map((w: { treeIndex: number }) => w.treeIndex)))
@@ -313,11 +340,110 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
           )}
         </section>
 
+        {/* Section 6: Fishbone (conditional) */}
+        {fishboneCauses.length > 0 && (
+          <>
+            <Separator className="print:hidden" />
+            <section>
+              <SectionHeader number={6} title="Fishbone / Ishikawa Analysis" />
+              <div className="space-y-4">
+                {Array.from(new Set(fishboneCauses.map((c: { category: string }) => c.category)))
+                  .sort()
+                  .map((cat) => {
+                    const catCauses = fishboneCauses.filter((c: { category: string }) => c.category === cat)
+                    return (
+                      <div key={cat as string} className="rounded-lg border border-slate-200 bg-white p-4">
+                        <p className="text-sm font-semibold text-slate-800 mb-2">{cat as string}</p>
+                        <ul className="space-y-1">
+                          {catCauses.map((c: { id: string; cause: string; evidence: string | null }) => (
+                            <li key={c.id} className="text-sm text-slate-700">
+                              <span>{c.cause}</span>
+                              {c.evidence && (
+                                <span className="text-xs text-slate-500 ml-2">({c.evidence})</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )
+                  })}
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* Section 7: Is / Is Not (conditional) */}
+        {isIsNotEntries.length > 0 && (
+          <>
+            <Separator className="print:hidden" />
+            <section>
+              <SectionHeader number={7} title="Is / Is Not Analysis" />
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Dimension</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">IS</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">IS NOT</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Distinction</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-100">
+                    {isIsNotEntries.map((e: { id: string; dimension: string; isDescription: string; isNotDescription: string; distinction: string | null }) => (
+                      <tr key={e.id}>
+                        <td className="px-4 py-3 text-xs font-semibold text-slate-700 uppercase">{e.dimension}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{e.isDescription}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{e.isNotDescription}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">{e.distinction || "\u2014"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* Section 8: Process Analysis (conditional) */}
+        {processAnalysisSteps.length > 0 && (
+          <>
+            <Separator className="print:hidden" />
+            <section>
+              <SectionHeader number={8} title="Process Analysis" />
+              <div className="space-y-3">
+                {processAnalysisSteps.map((s: { id: string; stepNumber: number; processStep: string; expected: string; actual: string; deviation: boolean; deviationDetail: string | null }) => (
+                  <div
+                    key={s.id}
+                    className={`rounded-lg border p-4 ${s.deviation ? "border-amber-300 bg-amber-50/30" : "border-slate-200 bg-white"}`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${s.deviation ? "bg-amber-500 text-white" : "bg-blue-600 text-white"}`}>
+                        {s.stepNumber}
+                      </span>
+                      <span className="text-sm font-medium text-slate-800">{s.processStep}</span>
+                      {s.deviation && (
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">Deviation</span>
+                      )}
+                    </div>
+                    <dl>
+                      <Field label="Expected" value={s.expected} />
+                      <Field label="Actual" value={s.actual} />
+                      {s.deviation && s.deviationDetail && (
+                        <Field label="Deviation Detail" value={s.deviationDetail} />
+                      )}
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+
         <Separator className="print:hidden" />
 
-        {/* Section 5: Root Cause */}
+        {/* Section 9: Root Cause */}
         <section>
-          <SectionHeader number={5} title="Root Cause Confirmation" />
+          <SectionHeader number={9} title="Root Cause Confirmation" />
           {rc ? (
             <dl className="rounded-lg border border-slate-200 bg-white p-4">
               <Field label="Root Cause Statement" value={rc.rootCauseStatement} />
@@ -347,9 +473,9 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
 
         <Separator className="print:hidden" />
 
-        {/* Section 6: CAPA Actions */}
+        {/* Section 10: CAPA Actions */}
         <section className="print:break-before-page">
-          <SectionHeader number={6} title="CAPA Plan" />
+          <SectionHeader number={10} title="CAPA Plan" />
           {capaActions.length > 0 ? (
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-sm">
@@ -435,9 +561,9 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
 
         <Separator className="print:hidden" />
 
-        {/* Section 7: Effectiveness */}
+        {/* Section 11: Effectiveness */}
         <section>
-          <SectionHeader number={7} title="Effectiveness Verification" />
+          <SectionHeader number={11} title="Effectiveness Verification" />
           {er ? (
             <dl className="rounded-lg border border-slate-200 bg-white p-4">
               <Field

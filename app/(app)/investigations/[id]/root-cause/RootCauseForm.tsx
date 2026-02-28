@@ -103,7 +103,7 @@ export function RootCauseForm({ id, existing }: RootCauseFormProps) {
 
   return (
     <StepShell
-      stepNumber={5}
+      stepNumber={9}
       title="Root Cause Confirmation"
       description="State the confirmed root cause and validate it against key criteria."
       investigationId={id}
